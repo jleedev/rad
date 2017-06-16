@@ -1,0 +1,6 @@
+- standard file descriptors are closed
+- file is utf-8 or latin-1
+- file contains null bytes
+- file has unterminated last line
+- file has crlf lines
+- command input is missing newline

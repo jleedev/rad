@@ -1,18 +1,25 @@
-use ::rusqlite;
+use rusqlite;
+use tempdir::TempDir;
 use std::error;
 
 type Error = Box<error::Error>;
 
 pub struct Buffer {
     conn: rusqlite::Connection,
+    tmp_dir: TempDir,
 }
 
 impl Buffer {
-    pub fn new() -> Self {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute("create table data(value text not null)", &[])
-            .unwrap();
-        Buffer { conn: conn }
+    pub fn new() -> Result<Self, Error> {
+        let tmp_dir = TempDir::new_in("/var/tmp", "rad")?;
+        let db_path = tmp_dir.path().join("buffer");
+        println!("{:?}", db_path);
+        let conn = rusqlite::Connection::open(db_path)?;
+        conn.execute("create table data(value text not null)", &[])?;
+        Ok(Buffer {
+            conn: conn,
+            tmp_dir: tmp_dir,
+        })
     }
 
     pub fn dump(&self) -> Result<(), Error> {
@@ -86,13 +93,16 @@ impl Buffer {
         where L: Iterator<Item = Result<String, E>>,
               E: error::Error + 'static
     {
+        let tx = self.conn.transaction()?;
         let mut r = 0i64;
-        let mut stmt = self.conn
-            .prepare("insert into data(value) values (?)")?;
-        for l in lines {
-            let s: String = l?;
-            r += stmt.execute(&[&s])? as i64;
+        {
+            let mut stmt = tx.prepare("insert into data(value) values (?)")?;
+            for l in lines {
+                let s: String = l?;
+                r += stmt.execute(&[&s])? as i64;
+            }
         }
+        tx.commit()?;
         Ok(r)
     }
 
